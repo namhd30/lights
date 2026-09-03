@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reflex 3 Lights</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  font-family:Inter,Arial,sans-serif;background:#090d18;color:#fff;
+  padding:20px;
+}
+.game{
+  width:min(560px,100%);padding:34px;border:1px solid #20283a;border-radius:28px;
+  background:linear-gradient(180deg,#151b2b,#0f1421);
+  box-shadow:0 25px 80px #0008;text-align:center;
+}
+h1{margin:0;font-size:32px;letter-spacing:.5px}
+.sub{margin:9px 0 28px;color:#94a3b8}
+.lights{display:flex;justify-content:center;gap:24px;margin:10px 0 32px}
+.light{
+  width:105px;height:105px;border-radius:50%;position:relative;
+  border:6px solid #ffffff12;transition:.25s;box-shadow:0 0 25px currentColor, inset 0 0 22px #fff5;
+}
+.light::after{
+  content:"";position:absolute;left:19px;top:14px;width:28px;height:18px;
+  border-radius:50%;background:#fff8;filter:blur(3px);transform:rotate(-25deg)
+}
+.red{background:#ef3340;color:#ef3340}
+.green{background:#20c978;color:#20c978}
+.blue{background:#3b82f6;color:#3b82f6}
+.timer{
+  font-variant-numeric:tabular-nums;font-size:64px;font-weight:800;
+  line-height:1;margin:8px 0 10px
+}
+.unit{font-size:18px;color:#94a3b8;font-weight:500}
+.status{min-height:28px;color:#cbd5e1;margin:18px 0}
+button{
+  width:100%;border:0;border-radius:16px;padding:18px 20px;font-size:21px;
+  font-weight:800;color:#fff;background:#f59e0b;cursor:pointer;
+  box-shadow:0 10px 30px #f59e0b33;transition:.18s
+}
+button:hover{transform:translateY(-2px);filter:brightness(1.08)}
+button:active{transform:scale(.985)}
+.pause-btn{
+  width:auto;
+  margin-top:10px;
+  padding:9px 16px;
+  border-radius:10px;
+  font-size:14px;
+  font-weight:700;
+  background:#334155;
+  box-shadow:none;
+}
+.pause-btn:hover{background:#475569;transform:none}
+.pause-btn:disabled{opacity:.35;cursor:not-allowed}
+.stats{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px
+}
+.stat{padding:14px;border-radius:14px;background:#ffffff08;border:1px solid #ffffff0c}
+.label{display:block;color:#94a3b8;font-size:13px;margin-bottom:5px}
+.value{font-size:22px;font-weight:750}
+.tip{font-size:13px;color:#64748b;margin-top:22px}
+@media(max-width:500px){
+  .game{padding:24px 18px}.lights{gap:12px}.light{width:82px;height:82px}
+  .timer{font-size:50px}h1{font-size:27px}
+}
+</style>
+</head>
+<body>
+<main class="game">
+  <h1>⚡ REFLEX 3 LIGHTS</h1>
+  <div class="sub">Bấm nhanh nhất có thể</div>
+
+  <div class="lights" id="lights"></div>
+
+  <div class="timer"><span id="timer">0.000</span> <span class="unit">giây</span></div>
+  <div class="status" id="status">Nhấn BẮT ĐẦU để bắt đầu lượt chơi.</div>
+
+  <button id="action">BẮT ĐẦU</button>
+  <button id="pauseBtn" class="pause-btn">⏸ TẠM DỪNG</button>
+
+  <div class="stats">
+    <div class="stat">
+      <span class="label">BEST TIME</span>
+      <span class="value" id="best">—</span>
+    </div>
+    <div class="stat">
+      <span class="label">LƯỢT CHƠI</span>
+      <span class="value" id="rounds">0</span>
+    </div>
+  </div>
+
+  <div class="tip">Sau mỗi lần bấm, 3 màu sẽ tự đổi vị trí.</div>
+</main>
+
+<script>
+const lights = document.getElementById("lights");
+const timer = document.getElementById("timer");
+const statusEl = document.getElementById("status");
+const action = document.getElementById("action");
+const bestEl = document.getElementById("best");
+const roundsEl = document.getElementById("rounds");
+const pauseBtn = document.getElementById("pauseBtn");
+
+let running = false;
+let start = 0;
+let frame = 0;
+let rounds = 0;
+let best = Number(localStorage.getItem("reflexBest") || 0);
+let restartTimer = null;
+let paused = false;
+let pausedAt = 0;
+let pausedElapsed = 0;
+
+if(best) bestEl.textContent = best.toFixed(3) + "s";
+
+let currentOrder = [];
+
+function shuffleDifferent(array){
+  let result;
+  do {
+    result = [...array];
+    for(let i=result.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [result[i],result[j]]=[result[j],result[i]];
+    }
+  } while (
+    currentOrder.length === result.length &&
+    result.every((color, index) => color === currentOrder[index])
+  );
+
+  currentOrder = result;
+  return result;
+}
+
+function renderLights(){
+  const colors = shuffleDifferent(["red","green","blue"]);
+  lights.innerHTML = "";
+  colors.forEach(c=>{
+    const el=document.createElement("div");
+    el.className="light "+c;
+    lights.appendChild(el);
+  });
+}
+
+function tick(){
+  if(!running || paused) return;
+  const elapsed=(performance.now()-start)/1000;
+  timer.textContent=elapsed.toFixed(3);
+  frame=requestAnimationFrame(tick);
+}
+
+function startGame(){
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+  running=true;
+  paused=false;
+  pausedElapsed=0;
+  start=performance.now();
+  pauseBtn.disabled=false;
+  pauseBtn.textContent="⏸ TẠM DỪNG";
+  timer.textContent="0.000";
+  statusEl.textContent="Đang chạy... BẤM NGAY!";
+  action.textContent="BẤM NGAY!";
+  action.style.background="#ef3340";
+  cancelAnimationFrame(frame);
+  tick();
+}
+
+function togglePause(){
+  if(!running) return;
+
+  if(!paused){
+    paused=true;
+    pausedAt=performance.now();
+    pausedElapsed=(pausedAt-start)/1000;
+    timer.textContent=pausedElapsed.toFixed(3);
+    statusEl.textContent="⏸ Đã tạm dừng";
+    pauseBtn.textContent="▶ TIẾP TỤC";
+    cancelAnimationFrame(frame);
+  }else{
+    const now=performance.now();
+    start += now-pausedAt;
+    paused=false;
+    statusEl.textContent="▶ Tiếp tục...";
+    pauseBtn.textContent="⏸ TẠM DỪNG";
+    tick();
+  }
+}
+
+function stopGame(){
+  if(paused) return;
+  running=false;
+  paused=false;
+  cancelAnimationFrame(frame);
+  pauseBtn.disabled=true;
+  pauseBtn.textContent="⏸ TẠM DỪNG";
+  const elapsed=(performance.now()-start)/1000;
+  timer.textContent=elapsed.toFixed(3);
+
+  rounds++;
+  roundsEl.textContent=rounds;
+
+  if(!best || elapsed<best){
+    best=elapsed;
+    localStorage.setItem("reflexBest",best);
+    bestEl.textContent=best.toFixed(3)+"s";
+    statusEl.textContent="🏆 KỶ LỤC MỚI!";
+  }else{
+    statusEl.textContent="⚡ Phản xạ: "+elapsed.toFixed(3)+" giây";
+  }
+
+  // Đổi màu ngay lập tức rồi tự động chạy lượt mới
+  renderLights();
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    startGame();
+  }, 450);
+}
+
+action.addEventListener("click",()=>running ? stopGame() : startGame());
+pauseBtn.addEventListener("click", togglePause);
+pauseBtn.disabled=true;
+renderLights();
+</script>
+</body>
+</html>
